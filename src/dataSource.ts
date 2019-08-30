@@ -1,7 +1,7 @@
 import * as cp from 'child_process';
 import { decode, encodingExists } from 'iconv-lite';
 import * as path from 'path';
-import { Uri } from 'vscode';
+import { Uri, window, workspace } from 'vscode';
 import { AskpassEnvironment, AskpassManager } from './askpass/askpassManager';
 import { getConfig } from './config';
 import { Logger } from './logger';
@@ -521,8 +521,8 @@ export class DataSource {
 		return this.execDiffTree(repo, fromHash, toHash, '--numstat');
 	}
 
-	private getLog(repo: string, branches: string[] | null, num: number, showRemoteBranches: boolean, order: CommitOrdering) {
-		let args = ['log', '--max-count=' + num, '--format=' + this.gitLogFormat, '--' + order + '-order'];
+	private async getLog(repo: string, branches: string[] | null, num: number, showRemoteBranches: boolean, order: CommitOrdering) {
+		let args = ['log', '--max-count=' + num, '--format=' + this.gitLogFormat, '--' + order + '-order' ];
 		if (branches !== null) {
 			for (let i = 0; i < branches.length; i++) {
 				args.push(branches[i]);
@@ -534,6 +534,17 @@ export class DataSource {
 			args.push('HEAD');
 		}
 		args.push('--');
+		if (workspace.workspaceFolders) {
+			if (workspace.workspaceFolders.length === 1) {
+				args.push(workspace.workspaceFolders[0].uri.fsPath);
+			}
+			else {
+				await window.showWorkspaceFolderPick().then(pickedWorkspace => {
+					if (!pickedWorkspace) {return;}
+					args.push(pickedWorkspace.uri.fsPath);
+				});
+			}
+		}
 
 		return this.spawnGit(args, repo, (stdout) => {
 			let lines = stdout.split(EOL_REGEX);
@@ -641,7 +652,6 @@ export class DataSource {
 	private _spawnGit<T>(args: string[], repo: string, resolveValue: { (stdout: Buffer): T }) {
 		return new Promise<T>((resolve, reject) => {
 			if (this.gitExecutable === null) return reject(UNABLE_TO_FIND_GIT_MSG);
-
 			const cmd = cp.spawn(this.gitExecutable.path, args, {
 				cwd: repo,
 				env: Object.assign({}, process.env, this.askpassEnv)
